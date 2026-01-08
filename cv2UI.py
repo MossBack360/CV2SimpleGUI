@@ -373,6 +373,69 @@ class CV2UI:
             visible=True,
             level=level
         )
+    def change_imgInContextArea(
+        self,
+        name,
+        img,
+        box_size_keep_auto_value="keep",
+        offset=None,
+        overflow=None
+    ):
+
+        padding = 10
+
+        props = self.boxes[name]
+        whichArea = props["whichArea"]
+
+        if props["type"] != "imgInContextArea":
+            raise TypeError
+
+        # ---------- overflow ----------
+        if overflow is None:
+            overflow = props["overflow"]
+
+        scrollbarWidth = 17 if overflow else 0
+
+        # ---------- offset ----------
+        if offset is None:
+            offset = props["offset"]
+
+        # ---------- box_size ----------
+        box_size = box_size_keep_auto_value
+
+        if isinstance(box_size, tuple):
+            box_w, box_h = box_size
+
+        elif box_size == "auto":
+            areaX, areaY, areaW, areaH = self.contextArea[whichArea]
+
+            img_h, img_w = img.shape[:2]
+
+            offsetX, offsetY = offset
+
+            # box 尺寸不超过 contextArea 可用范围
+            box_w = min(
+                areaW - offsetX - padding - scrollbarWidth,
+                img_w + padding * 2
+            )
+
+            box_h = min(
+                areaH - offsetY - padding - scrollbarWidth,
+                img_h + padding * 2
+            )
+
+        elif box_size == "keep":
+            box_w, box_h = props["size"]
+
+        else:
+            raise ValueError("box_size_keep_auto_value must be tuple / 'auto' / 'keep'")
+
+        # ---------- 写回 props ----------
+        props["img"] = img
+        props["size"] = (box_w, box_h)
+        props["offset"] = offset
+        props["overflowXY"] = [0, 0]
+        props["overflow"] = overflow
 
     def change_textInContextArea(self,name,context, box_size_keep_auto_value="keep", offset=None,overflow=None):
         padding = 10
@@ -552,6 +615,9 @@ class CV2UI:
                 )
             )
 
+            self.add_makeButtonLongPressable(f"{whichBox}_scroll_up")
+            self.add_makeButtonLongPressable(f"{whichBox}_scroll_down")
+
         else:  # horizontal
             left_arrow = self.tool_draw_left_arrow()
             right_arrow = self.tool_draw_right_arrow()
@@ -584,6 +650,8 @@ class CV2UI:
                     wb, direction="horizontal", step=st
                 )
             )
+            self.add_makeButtonLongPressable(f"{whichBox}_scroll_left")
+            self.add_makeButtonLongPressable(f"{whichBox}_scroll_right")
 
 
 
@@ -618,9 +686,13 @@ class CV2UI:
 
         return (contextX,contextY)
 
-    def add_boxSelectionEnabled(self,whichBox):
+    def add_boxSelectionEnabled(self,whichBox,callback=None):
+        def on_select(xy1,xy2):
+            print(xy1,"to",xy2)
+        if callback is None:
+            callback = on_select
         self.boxes[whichBox]["selectionEnabled"] = True
-        
+        self.boxes[whichBox]["selectionCallback"] = callback
 
     def _tool_whichBoxSelect(self,mouseXY):
         for name in self.boxes:
@@ -1153,6 +1225,61 @@ class CV2UI:
         
         return None
 
+    def draw_windows_classic_selection(self, inputFrame,
+    p1,              # (x1, y1)
+    p2,              # (x2, y2)
+    dash_len=4       # 虚线单段长度（Windows 风格通常 3~5）
+    ):
+        """
+        在 inputFrame 上绘制 Windows Classic 风格的拖拽选择虚线框
+        返回绘制后的新 frame
+        """
+        frame = np.copy(inputFrame)
+
+        x1, y1 = p1
+        x2, y2 = p2
+        if x1 == -1 or x2 == -1 or y1 == -1 or y2 == -1:
+            return frame
+
+        # 归一化坐标（支持反向拖拽）
+        x_min, x_max = sorted([x1, x2])
+        y_min, y_max = sorted([y1, y2])
+
+        h, w = frame.shape[:2]
+        x_min = max(0, min(w - 1, x_min))
+        x_max = max(0, min(w - 1, x_max))
+        y_min = max(0, min(h - 1, y_min))
+        y_max = max(0, min(h - 1, y_max))
+
+        black = (0, 0, 0)
+        white = (255, 255, 255)
+
+        def draw_dashed_line(p_start, p_end, horizontal=True):
+            length = (p_end[0] - p_start[0]) if horizontal else (p_end[1] - p_start[1])
+            for i in range(0, length, dash_len):
+                color = black if (i // dash_len) % 2 == 0 else white
+
+                if horizontal:
+                    xs = p_start[0] + i
+                    xe = min(xs + dash_len, p_end[0])
+                    y = p_start[1]
+                    cv2.line(frame, (xs, y), (xe, y), color, 1)
+                else:
+                    ys = p_start[1] + i
+                    ye = min(ys + dash_len, p_end[1])
+                    x = p_start[0]
+                    cv2.line(frame, (x, ys), (x, ye), color, 1)
+
+        # 上
+        draw_dashed_line((x_min, y_min), (x_max, y_min), horizontal=True)
+        # 下
+        draw_dashed_line((x_min, y_max), (x_max, y_max), horizontal=True)
+        # 左
+        draw_dashed_line((x_min, y_min), (x_min, y_max), horizontal=False)
+        # 右
+        draw_dashed_line((x_max, y_min), (x_max, y_max), horizontal=False)
+
+        return frame
     def _tool_clickWhichArea(self, mouseXY):
         x,y=mouseXY[0],mouseXY[1]
         for index,area in self.contextArea.items():
@@ -1161,6 +1288,9 @@ class CV2UI:
                 return index
         
         return None
+    def add_makeButtonLongPressable(self,whichButton):
+        
+        self.buttons[whichButton]["isLongPressable"] = True
     
     def _tool_readTextInput(self, key, text, cursor):
         """
@@ -1282,6 +1412,12 @@ class CV2UI:
                         windowFrame = self._draw_toast(name, windowFrame)
                         windowFrame = self._draw_buttons(windowFrame,renderLevel=self.currentFocusLevel)
             
+            if self.isDrawingBox:
+                windowFrame = self.draw_windows_classic_selection(inputFrame=windowFrame,
+                    p1=self.drawingBoxStartXY,
+                    p2=self.drawingBoxEndXY
+                                                                  
+                )
             cv2.imshow(self.window_name, windowFrame)
 
             
@@ -1334,14 +1470,19 @@ class CV2UI:
                         self.isTextInput = False
                     if props0["callback"] is not None:
                         props0["callback"]()
+                    
                     self.tool_clrMouseClickStatus()
+                if props0.get("isLongPressable", False):
+                    if self.mouseStatus["isLButtonUp"] == False:
+                        if props0["callback"] is not None:
+                            props0["callback"]()
             
 
             whichBox, whichArea = self._tool_whichBoxSelect(self.mouseStatus['pushedL_XY'])
             self.currentBoxSelected = whichBox
             self.currentArea = whichArea
             if self.currentBoxSelected is not None:
-                
+                print("Current Box Selected:", self.currentBoxSelected, "in Area:", self.currentArea)
                 VWheel = self.mouseStatus['VWheel']
                 HWheel = self.mouseStatus['HWheel']
                 whichboxes = [name for name,props in self.boxes.items() if props["whichArea"]==self.currentArea]
@@ -1356,10 +1497,38 @@ class CV2UI:
                 if box.get("selectionEnabled", False):
                     self.isDrawingBox = True
                     self.drawingBoxStartXY = self.mouseStatus['pushedL_XY']
-                    self.drawingBoxEndXY = self.mouseStatus['toWhereL_XY']
-                    print(self.drawingBoxStartXY + self.drawingBoxEndXY)
-            
+                    toX,toY = self.mouseStatus['toWhereL_XY']
+                    
+                    maxX = box["size"][0] + self.contextArea[box["whichArea"]][0] + box["offset"][0]
+                    maxY = box["size"][1] + self.contextArea[box["whichArea"]][1] + box["offset"][1]
 
+                    minX = self.contextArea[box["whichArea"]][0] + box["offset"][0]
+                    minY = self.contextArea[box["whichArea"]][1] + box["offset"][1]
+                    if toX != -1 and toY != -1:
+                        toX = min(toX, maxX)
+                        toY = min(toY, maxY)
+                        toX = max(toX, minX)
+                        toY = max(toY, minY)
+
+                    self.drawingBoxEndXY = [toX, toY]
+                    #print(self.drawingBoxStartXY + self.drawingBoxEndXY)
+            
+            if self.isDrawingBox and self.mouseStatus["isLButtonUp"] == True:
+                self.isDrawingBox = False
+                box = self.boxes[self.currentBoxSelected]
+                callback = box.get("selectionCallback", None)
+                callbackArgs = {
+                    "startXY": self.drawingBoxStartXY,
+                    "endXY": self.drawingBoxEndXY
+                }
+                if callback is not None:
+                    callback(self.drawingBoxStartXY, self.drawingBoxEndXY)
+
+            if self.mouseStatus["isLButtonUp"] == True:
+                
+                self.isDrawingBox = False
+                self.drawingBoxStartXY = [-1,-1]
+                self.drawingBoxEndXY = [-1,-1]
             if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) <1:
                 break
 
@@ -1430,6 +1599,16 @@ MainUI.add_button(name="textboxDemo",
             align="left")
 def changetext():
     MainUI.change_textInButton(name="textboxDemo",label="111222")
+
+img2 = cv2.imread("./2.jpg")
+def func2():
+    MainUI.change_imgInContextArea(name="demoImgBox",img=img2)
+MainUI.add_button(name="changeImgBtn",
+            positionXY=(700,20),
+            label="Change Text",
+            key='c',
+            widthHeight=[80,30],
+            callback= lambda: func2())
 
 def inputMode():
     MainUI.isTextInput = True
