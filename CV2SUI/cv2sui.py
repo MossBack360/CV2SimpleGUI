@@ -495,7 +495,7 @@ class cv2sui:
             areaX, areaY, areaW, areaH = self.contextArea[whichArea]
             text_width, text_height,_ = self.get_multiline_text_size(context)
             text_width +=padding*2
-            text_width +=padding*2
+            text_height +=padding*2
             offsetX, offsetY = offset
             box_w = min(areaW-offsetX, text_width)
             box_h = min(areaH-offsetY, text_height)
@@ -888,12 +888,11 @@ class cv2sui:
             # ---------- 5. 正常绘制 ----------
             wholeTextFrame = np.zeros((content_h, content_w, 3), dtype=np.uint8)
             wholeTextFrame=self.draw_textDirectlyInFrame(wholeTextFrame, context,position=(padding,padding))
-            
             textActualShownFrame = wholeTextFrame[
                 oy: oy + box_h,
                 ox: ox + box_w
             ]
-
+            #print(textActualShownFrame.shape)
             h, w, _ = textActualShownFrame.shape
             roi = frame[y+offset[1]:y+offset[1]+h, x+offset[0]:x+offset[0]+w]
             roi = cv2.copyTo(src=textActualShownFrame,mask=textActualShownFrame,dst=roi)
