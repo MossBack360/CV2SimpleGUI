@@ -1,13 +1,8 @@
 import cv2
 import numpy as np
-import os
-from pynput import keyboard
-import queue
-import threading
-from pprint import pformat
 import clipboard
 
-class CV2UI:
+class cv2sui:
     light = (255, 255, 255)
     mid   = (192, 192, 192)
     dark  = (128, 128, 128)
@@ -37,6 +32,7 @@ class CV2UI:
         self.toasts = {}   # name: {props}
         self.boxes = {}    # name: {props}
         self.textBar = {}  # name: {props}
+        self.textDirectlyInFrame = {} # name: {props}
 
         self.mouseStatus={
             'pushedL_XY':[-1,-1],
@@ -1057,6 +1053,15 @@ class CV2UI:
         
         return outputFrame
 
+    def add_textDirectlyInFrame(self,name,text,positionXY):
+        self.textDirectlyInFrame[name] = {
+            "text": text,
+            "positionXY": positionXY
+        }
+
+    def remove_textDirectlyInFrame(self,name):
+        if name in self.textDirectlyInFrame:
+            del self.textDirectlyInFrame[name]
 
     def _draw_buttons(self, inputFrame, renderLevel = 0):
         outputFrame = inputFrame.copy()
@@ -1401,6 +1406,7 @@ class CV2UI:
             windowFrame = self._draw_windowBorder_hollow(windowFrame)
             windowFrame = self._draw_buttons(windowFrame)
             windowFrame = self._draw_textBars(windowFrame)
+
             
             #x1,y1=self.mouseStatus['pushedL_XY']
             #cv2.circle(windowFrame, (x1, y1), 3, (0,0,255), -1)
@@ -1418,6 +1424,15 @@ class CV2UI:
                     p2=self.drawingBoxEndXY
                                                                   
                 )
+
+            for name in self.textDirectlyInFrame:
+                props = self.textDirectlyInFrame[name]
+                windowFrame = self.draw_textDirectlyInFrame(
+                    windowFrame,
+                    text=props["text"],
+                    position=props["positionXY"]
+                )
+                
             cv2.imshow(self.window_name, windowFrame)
 
             
@@ -1534,89 +1549,6 @@ class CV2UI:
 
         cv2.destroyAllWindows()
 
-
-
-
-
-
-MainUI = CV2UI(window_name="CV2 UI Demo", width=800, height=600, level=0, contextArea={"mainA": (50, 50, 150, 200),
-                                                                                       "imgArea":(50, 300, 150, 200)})
-files = os.listdir('.')
-s = pformat(files, width=80)
-
-demoimg = cv2.imread("./TestImg.png")
-
-MainUI.add_imgInContextArea(name="demoImgBox",img=demoimg,whichArea="imgArea")
-
-str1 = "ABCABCABC /N ABCABCABC /N ABCABCABC \n ABCABCABC /N [\nYou can a [ \n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC\n ABCABCABC"
-MainUI.add_textInContextArea(
-    name="demo_textBox",
-    context=str1,
-    whichArea="mainA",
-    offset=(1,1),
-    overflow=True
-)
-
-def lit1(i):
-    while True:
-     yield i
-     i+=1
-
-lit = lit1(0)
-
-def fuc1():
-    v=next(lit)
-    s1=str(v)
-    MainUI.change_textInContextArea(name="demo_textBox",context=s1)
-
-MainUI.add_button(name="text",
-            positionXY=(0,20),
-            label="TOAST2",
-            key='l',
-            callback= lambda:fuc1()
-            )
-
-
-MainUI.add_button(name="text2",
-            positionXY=(200,20),
-            label="TOAST",
-            key='t',
-            callback= lambda: MainUI.changeLevel(toWhichLevel=1))
-
-MainUI.add_toast(name ="warning",
-                 context="This is a demo text box.\nYou can add multiple lines g p g p",
-                 level=1)
-
-textboxDemoImg = np.zeros((40,300,3),dtype=np.uint8)
-textboxDemoImg[:] = [200,200,20]
-MainUI.add_button(name="textboxDemo",
-            positionXY=(350,20),
-            label="TOASTT",
-            key='t',
-            widthHeight=[300,50],
-            img=textboxDemoImg,
-            #callback= lambda: inputMode(),
-            align="left")
-def changetext():
-    MainUI.change_textInButton(name="textboxDemo",label="111222")
-
-img2 = cv2.imread("./2.jpg")
-def func2():
-    MainUI.change_imgInContextArea(name="demoImgBox",img=img2)
-MainUI.add_button(name="changeImgBtn",
-            positionXY=(700,20),
-            label="Change Text",
-            key='c',
-            widthHeight=[80,30],
-            callback= lambda: func2())
-
-def inputMode():
-    MainUI.isTextInput = True
-
-MainUI.add_boxSelectionEnabled("demo_textBox")
-MainUI.add_textBar(name="input2",positionXY=(350,100),width=200,maxTextShown=15)
-
-MainUI.show()
 
 
 
